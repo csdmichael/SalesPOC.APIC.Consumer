@@ -81,6 +81,41 @@ The workflow uses OIDC with `azure/login@v2` and then runs the PowerShell script
 - **Authorization errors**: Confirm the identity running the script has required API Center permissions and correct subscription/resource group values.
 - **Timeouts**: Increase `-TimeoutSeconds` for slower analysis completion.
 
+### GitHub OIDC login errors (AADSTS700213)
+
+If GitHub Actions fails during `azure/login` with a message like `AADSTS700213`, the Entra federated credential does not match the workflow token claims.
+
+Use these exact values in the app registration federated credential:
+- Issuer: `https://token.actions.githubusercontent.com`
+- Audience: `api://AzureADTokenExchange`
+- Subject (example for main branch): `repo:csdmichael/SalesPOC.APIC.Consumer:ref:refs/heads/main`
+
+Also verify workflow secrets point to the same app registration where this federated credential exists:
+- `AZURE_CLIENT_ID`
+- `AZURE_TENANT_ID`
+- `AZURE_SUBSCRIPTION_ID`
+
+### "Resource '<guid>' does not exist" during identity setup
+
+This usually means a wrong identifier type is being used (for example, passing a client ID where an object ID is required), or the object is in a different tenant.
+
+Quick checks:
+
+```bash
+# Verify tenant context
+az account show --query "{tenantId:tenantId, subscriptionId:id}" -o table
+
+# Try to resolve as application by appId (client ID)
+az ad app list --filter "appId eq '<guid>'" --query "[].{displayName:displayName,id:id,appId:appId}" -o table
+
+# Try to resolve as service principal by appId
+az ad sp list --filter "appId eq '<guid>'" --query "[].{displayName:displayName,id:id,appId:appId}" -o table
+```
+
+Important:
+- `az ad app federated-credential create --id` expects the **application object ID** (`id`), not the client ID (`appId`).
+- If you only have client ID, look up the app first and then use its object ID.
+
 ## Notes
 
 - Temporary APIs are created with names like `ruleset-test-<timestamp>` and cleaned up in a `finally` block.

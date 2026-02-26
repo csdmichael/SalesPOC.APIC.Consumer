@@ -1,0 +1,7 @@
+az ad app federated-credential create --id f30ae289-bbf2-44c4-9351-6d02dc34e427 --parameters '{
+  "name": "github-main",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:csdmichael/SalesPOC.APIC.Consumer:ref:refs/heads/main",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+

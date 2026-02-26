@@ -89,9 +89,9 @@ function Get-SpecCandidates {
         "$apiRoot/openapi.yaml",
         "$apiRoot/swagger.json",
         "$apiRoot/openapi?format=json",
-        "$apiRoot?format=openapi",
-        "$apiRoot?format=swagger",
-        "$apiRoot?format=swagger-link-json"
+        "${apiRoot}?format=openapi",
+        "${apiRoot}?format=swagger",
+        "${apiRoot}?format=swagger-link-json"
     )
 }
 
