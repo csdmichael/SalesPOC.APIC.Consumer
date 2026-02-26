@@ -15,7 +15,7 @@ Related API Center ruleset deployment repository:
 2. Creates temporary API entities in Azure API Center.
 3. Imports the discovered OpenAPI specification.
 4. Triggers/polls API Center analysis results for the configured analyzer.
-5. Fails if error/critical violations are detected.
+5. Detects and records error/critical violations in the report.
 6. Cleans up the temporary API entities.
 
 ## Prerequisites
@@ -76,7 +76,7 @@ Behavior:
 - `FailOnViolations=true`: violations return non-zero exit code (fails workflow step)
 - `FailOnViolations=false`: violations are reported but workflow continues
 
-In GitHub Actions, the workflow uploads the `artifacts/` folder as an artifact named `apic-analysis-report` and also writes a summary to the job summary page.
+In GitHub Actions, this workflow runs with `FailOnViolations=false`, uploads the `artifacts/` folder as an artifact named `apic-analysis-report`, and appends the Markdown report to the job summary page.
 
 ## Run in GitHub Actions
 
@@ -99,7 +99,7 @@ The workflow uses OIDC with `azure/login@v2` and then runs the PowerShell script
 ## Expected outcome
 
 - Success: script prints a pass message, writes report files, and returns exit code `0`.
-- Violations: script writes report files; exit behavior depends on `FailOnViolations`.
+- Violations: script writes report files; in this workflow configuration the job continues and still publishes the report.
 - Error: script writes report files and returns non-zero exit code.
 
 ## Troubleshooting

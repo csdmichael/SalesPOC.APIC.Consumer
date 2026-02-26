@@ -47,8 +47,16 @@ jobs:
             -ServiceName "${{ secrets.API_CENTER_SERVICE_NAME }}" `
             -ApiBaseUrl "${{ inputs.api_url || 'https://apim-poc-my.azure-api.net/salesapi' }}" `
             -AnalyzerConfigName "${{ inputs.analyzer_config_name || 'spectral-openapi' }}" `
-            -FailOnViolations $false `
+            -FailOnViolations:$false `
             -ReportPath "artifacts/apic-analysis-report.json"
+
+      - name: Add report markdown to job summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f artifacts/apic-analysis-report.md ]; then
+            cat artifacts/apic-analysis-report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Upload validation report
         if: always()
