@@ -25,7 +25,13 @@ param(
     [int]$TimeoutSeconds = 240,
 
     [Parameter(Mandatory = $false)]
-    [int]$PollSeconds = 10
+    [int]$PollSeconds = 10,
+
+    [Parameter(Mandatory = $false)]
+    [bool]$FailOnViolations = $true,
+
+    [Parameter(Mandatory = $false)]
+    [string]$ReportPath = "artifacts/apic-analysis-report.json"
 )
 
 Set-StrictMode -Version Latest
@@ -144,6 +150,66 @@ function Test-HasViolations {
     return $false
 }
 
+function Write-ValidationReport {
+    param(
+        [hashtable]$Report,
+        [string]$JsonPath
+    )
+
+    $resolvedJsonPath = $JsonPath
+    if (-not [System.IO.Path]::IsPathRooted($resolvedJsonPath)) {
+        $resolvedJsonPath = Join-Path (Get-Location) $resolvedJsonPath
+    }
+
+    $jsonDir = Split-Path -Path $resolvedJsonPath -Parent
+    if ($jsonDir -and -not (Test-Path -Path $jsonDir)) {
+        New-Item -ItemType Directory -Path $jsonDir -Force | Out-Null
+    }
+
+    $payloadJson = $Report.payload | ConvertTo-Json -Depth 25
+    $Report | ConvertTo-Json -Depth 25 | Set-Content -Path $resolvedJsonPath -Encoding utf8
+
+    $markdownPath = [System.IO.Path]::ChangeExtension($resolvedJsonPath, ".md")
+    $markdownLines = @(
+        "# API Center Ruleset Validation Report",
+        "",
+        "- Status: **$($Report.status)**",
+        "- Has Violations: **$($Report.hasViolations)**",
+        "- Result Source: **$($Report.resultSource)**",
+        "- API Base URL: $($Report.apiBaseUrl)",
+        "- Discovered Spec URL: $($Report.discoveredSpecUrl)",
+        "- Analyzer Config: $($Report.analyzerConfigName)",
+        "- Started UTC: $($Report.startedUtc)",
+        "- Finished UTC: $($Report.finishedUtc)",
+        "- Message: $($Report.message)",
+        "",
+        "## Payload",
+        "",
+        '```json',
+        $payloadJson,
+        '```'
+    )
+    $markdownLines -join [Environment]::NewLine | Set-Content -Path $markdownPath -Encoding utf8
+
+    if ($env:GITHUB_STEP_SUMMARY) {
+        $summaryLines = @(
+            "## API Center Ruleset Validation",
+            "",
+            "- Status: **$($Report.status)**",
+            "- Has Violations: **$($Report.hasViolations)**",
+            "- Source: **$($Report.resultSource)**",
+            "- Message: $($Report.message)",
+            "- Report JSON: $resolvedJsonPath",
+            "- Report Markdown: $markdownPath",
+            ""
+        )
+        Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ($summaryLines -join [Environment]::NewLine)
+    }
+
+    Write-Host "Validation report (json): $resolvedJsonPath"
+    Write-Host "Validation report (md):   $markdownPath"
+}
+
 $serviceBase = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.ApiCenter/services/$ServiceName"
 $runId = (Get-Date -Format "yyyyMMddHHmmss")
 $apiId = "ruleset-test-$runId"
@@ -151,6 +217,26 @@ $versionId = (Get-Date -Format "yyyy-MM-dd")
 $definitionId = "openapi"
 $cleanupNeeded = $false
 $startUtc = (Get-Date).ToUniversalTime()
+$exitCode = 0
+$report = @{
+    runId = $runId
+    apiId = $apiId
+    versionId = $versionId
+    definitionId = $definitionId
+    subscriptionId = $SubscriptionId
+    resourceGroup = $ResourceGroup
+    serviceName = $ServiceName
+    apiBaseUrl = $ApiBaseUrl
+    analyzerConfigName = $AnalyzerConfigName
+    status = "unknown"
+    hasViolations = $false
+    resultSource = "none"
+    discoveredSpecUrl = $null
+    message = "Validation did not complete."
+    startedUtc = $startUtc.ToString("o")
+    finishedUtc = $null
+    payload = $null
+}
 
 try {
     Invoke-AzCli "az account set --subscription `"$SubscriptionId`""
@@ -159,6 +245,7 @@ try {
     Invoke-AzCli "az extension add --name apic-extension --upgrade --only-show-errors"
 
     $spec = Get-OpenApiSpec -BaseUrl $ApiBaseUrl
+    $report.discoveredSpecUrl = $spec.Url
 
     Write-Host "Creating temporary API entities in API Center..."
     Invoke-AzCli "az apic api create -g `"$ResourceGroup`" -n `"$ServiceName`" --api-id `"$apiId`" --title `"Ruleset Test $runId`" --type rest"
@@ -210,26 +297,68 @@ try {
             $recentExecutions = $executionsPayload.value
         }
 
-        if (Test-HasViolations -Payload $recentExecutions) {
+        $hasViolations = Test-HasViolations -Payload $recentExecutions
+        $report.payload = $recentExecutions
+        $report.resultSource = "analyzerExecutions"
+        $report.hasViolations = $hasViolations
+
+        if ($hasViolations) {
             Write-Host "Analyzer execution payload:" -ForegroundColor Yellow
             $recentExecutions | ConvertTo-Json -Depth 12 | Write-Host
-            throw "API Center analyzer execution indicates ruleset violations."
+            $report.status = "violations"
+            $report.message = "API Center analyzer execution indicates ruleset violations."
+            if ($FailOnViolations) {
+                $exitCode = 1
+            }
+            else {
+                Write-Warning "Ruleset violations found, but FailOnViolations is false. Workflow will continue."
+            }
         }
-
-        Write-Host "No failing analyzer execution markers detected." -ForegroundColor Green
-        Write-Host "Validation passed for endpoint: $ApiBaseUrl" -ForegroundColor Green
-        exit 0
+        else {
+            Write-Host "No failing analyzer execution markers detected." -ForegroundColor Green
+            Write-Host "Validation passed for endpoint: $ApiBaseUrl" -ForegroundColor Green
+            $report.status = "success"
+            $report.message = "No failing analyzer execution markers detected."
+        }
     }
+    else {
+        $hasViolations = Test-HasViolations -Payload $analysisPayload.value
+        $report.payload = $analysisPayload.value
+        $report.resultSource = "definitionAnalysisResults"
+        $report.hasViolations = $hasViolations
 
-    if (Test-HasViolations -Payload $analysisPayload.value) {
-        Write-Host "Definition analysis results:" -ForegroundColor Yellow
-        $analysisPayload.value | ConvertTo-Json -Depth 12 | Write-Host
-        throw "API Center analysisResults indicate ruleset violations."
+        if ($hasViolations) {
+            Write-Host "Definition analysis results:" -ForegroundColor Yellow
+            $analysisPayload.value | ConvertTo-Json -Depth 12 | Write-Host
+            $report.status = "violations"
+            $report.message = "API Center analysisResults indicate ruleset violations."
+            if ($FailOnViolations) {
+                $exitCode = 1
+            }
+            else {
+                Write-Warning "Ruleset violations found, but FailOnViolations is false. Workflow will continue."
+            }
+        }
+        else {
+            Write-Host "Analysis completed with no failing markers." -ForegroundColor Green
+            Write-Host "Discovered spec URL: $($spec.Url)"
+            Write-Host "Validation passed for endpoint: $ApiBaseUrl" -ForegroundColor Green
+            $report.status = "success"
+            $report.message = "Analysis completed with no failing markers."
+        }
     }
-
-    Write-Host "Analysis completed with no failing markers." -ForegroundColor Green
-    Write-Host "Discovered spec URL: $($spec.Url)"
-    Write-Host "Validation passed for endpoint: $ApiBaseUrl" -ForegroundColor Green
+}
+catch {
+    $report.status = "error"
+    $report.message = $_.Exception.Message
+    $report.resultSource = if ($report.resultSource -eq "none") { "scriptExecution" } else { $report.resultSource }
+    if (-not $report.payload) {
+        $report.payload = @{
+            error = $_.Exception.Message
+        }
+    }
+    $exitCode = 1
+    Write-Error $report.message
 }
 finally {
     if ($cleanupNeeded) {
@@ -241,4 +370,11 @@ finally {
             Write-Warning "Cleanup failed for API '$apiId'. You can delete it manually."
         }
     }
+
+    $report.finishedUtc = (Get-Date).ToUniversalTime().ToString("o")
+    Write-ValidationReport -Report $report -JsonPath $ReportPath
+}
+
+if ($exitCode -ne 0) {
+    exit $exitCode
 }

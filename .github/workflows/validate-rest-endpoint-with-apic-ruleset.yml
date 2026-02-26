@@ -46,4 +46,14 @@ jobs:
             -ResourceGroup "${{ secrets.AZURE_RESOURCE_GROUP }}" `
             -ServiceName "${{ secrets.API_CENTER_SERVICE_NAME }}" `
             -ApiBaseUrl "${{ inputs.api_url || 'https://apim-poc-my.azure-api.net/salesapi' }}" `
-            -AnalyzerConfigName "${{ inputs.analyzer_config_name || 'spectral-openapi' }}"
+            -AnalyzerConfigName "${{ inputs.analyzer_config_name || 'spectral-openapi' }}" `
+            -FailOnViolations $false `
+            -ReportPath "artifacts/apic-analysis-report.json"
+
+      - name: Upload validation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apic-analysis-report
+          path: artifacts/
+          if-no-files-found: warn

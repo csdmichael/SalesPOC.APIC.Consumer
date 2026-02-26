@@ -6,6 +6,9 @@ The project provides:
 - A PowerShell validation script: `scripts/validate-rest-endpoint-with-apic-ruleset.ps1`
 - A GitHub Actions workflow to run the validation in CI: `.github/workflows/validate-rest-endpoint-with-apic-ruleset.yml`
 
+Related API Center ruleset deployment repository:
+- https://github.com/csdmichael/SalesPOC.APIC
+
 ## What this validation does
 
 1. Discovers an OpenAPI document from the target API base URL using common OpenAPI/Swagger endpoint patterns.
@@ -51,6 +54,29 @@ Optional:
 - `ApiVersion` (default: `2024-06-01-preview`)
 - `TimeoutSeconds` (default: `240`)
 - `PollSeconds` (default: `10`)
+- `FailOnViolations` (default: `true`)
+- `ReportPath` (default: `artifacts/apic-analysis-report.json`)
+
+## Validation report output
+
+The script always writes a validation report, even when violations are found.
+
+Generated files:
+- JSON report: `artifacts/apic-analysis-report.json`
+- Markdown report: `artifacts/apic-analysis-report.md`
+
+Report fields include:
+- `status`: `success`, `violations`, or `error`
+- `hasViolations`: `true`/`false`
+- `resultSource`: `definitionAnalysisResults`, `analyzerExecutions`, or `scriptExecution`
+- `message`: human-readable summary
+- `payload`: raw analysis payload returned by API Center
+
+Behavior:
+- `FailOnViolations=true`: violations return non-zero exit code (fails workflow step)
+- `FailOnViolations=false`: violations are reported but workflow continues
+
+In GitHub Actions, the workflow uploads the `artifacts/` folder as an artifact named `apic-analysis-report` and also writes a summary to the job summary page.
 
 ## Run in GitHub Actions
 
@@ -72,8 +98,9 @@ The workflow uses OIDC with `azure/login@v2` and then runs the PowerShell script
 
 ## Expected outcome
 
-- Success: script prints a pass message and returns exit code `0`.
-- Failure: script throws when ruleset violations are detected or analysis results cannot be retrieved in time.
+- Success: script prints a pass message, writes report files, and returns exit code `0`.
+- Violations: script writes report files; exit behavior depends on `FailOnViolations`.
+- Error: script writes report files and returns non-zero exit code.
 
 ## Troubleshooting
 
