@@ -159,7 +159,13 @@ try {
 
     Write-Host "Creating temporary API entities in API Center..."
     Invoke-AzCli "az apic api create -g `"$ResourceGroup`" -n `"$ServiceName`" --api-id `"$apiId`" --title `"Ruleset Test $runId`" --type rest"
-    Invoke-AzCli "az apic api version create -g `"$ResourceGroup`" -n `"$ServiceName`" --api-id `"$apiId`" --version-id `"$versionId`" --title `"v1`" --lifecycle-stage testing"
+    try {
+        Invoke-AzCli "az apic api version create -g `"$ResourceGroup`" -n `"$ServiceName`" --api-id `"$apiId`" --version-id `"$versionId`" --title `"v1`""
+    }
+    catch {
+        Write-Warning "Version create without lifecycle stage failed. Retrying with '--lifecycle-stage testing'."
+        Invoke-AzCli "az apic api version create -g `"$ResourceGroup`" -n `"$ServiceName`" --api-id `"$apiId`" --version-id `"$versionId`" --title `"v1`" --lifecycle-stage testing"
+    }
     Invoke-AzCli "az apic api definition create -g `"$ResourceGroup`" -n `"$ServiceName`" --api-id `"$apiId`" --version-id `"$versionId`" --definition-id `"$definitionId`" --title `"OpenAPI`""
     $cleanupNeeded = $true
 
