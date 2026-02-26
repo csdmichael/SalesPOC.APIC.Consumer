@@ -47,6 +47,7 @@ Required:
 Optional:
 - `ApiBaseUrl` (default: `https://apim-poc-my.azure-api.net/salesapi`)
 - `AnalyzerConfigName` (default: `spectral-openapi`)
+- `VersionLifecycleStage` (default: `design`)
 - `ApiVersion` (default: `2024-06-01-preview`)
 - `TimeoutSeconds` (default: `240`)
 - `PollSeconds` (default: `10`)
@@ -119,4 +120,5 @@ Important:
 ## Notes
 
 - Temporary APIs are created with names like `ruleset-test-<timestamp>` and cleaned up in a `finally` block.
+- Temporary API versions use a date-based ID (for example `2026-02-26`) for API Center compatibility.
 - If cleanup fails, the script prints a warning so the API can be removed manually.

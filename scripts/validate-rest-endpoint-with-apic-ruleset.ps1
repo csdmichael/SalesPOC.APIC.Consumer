@@ -16,6 +16,9 @@ param(
     [string]$AnalyzerConfigName = "spectral-openapi",
 
     [Parameter(Mandatory = $false)]
+    [string]$VersionLifecycleStage = "design",
+
+    [Parameter(Mandatory = $false)]
     [string]$ApiVersion = "2024-06-01-preview",
 
     [Parameter(Mandatory = $false)]
@@ -144,7 +147,7 @@ function Test-HasViolations {
 $serviceBase = "https://management.azure.com/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup/providers/Microsoft.ApiCenter/services/$ServiceName"
 $runId = (Get-Date -Format "yyyyMMddHHmmss")
 $apiId = "ruleset-test-$runId"
-$versionId = "v1"
+$versionId = (Get-Date -Format "yyyy-MM-dd")
 $definitionId = "openapi"
 $cleanupNeeded = $false
 $startUtc = (Get-Date).ToUniversalTime()
@@ -159,13 +162,7 @@ try {
 
     Write-Host "Creating temporary API entities in API Center..."
     Invoke-AzCli "az apic api create -g `"$ResourceGroup`" -n `"$ServiceName`" --api-id `"$apiId`" --title `"Ruleset Test $runId`" --type rest"
-    try {
-        Invoke-AzCli "az apic api version create -g `"$ResourceGroup`" -n `"$ServiceName`" --api-id `"$apiId`" --version-id `"$versionId`" --title `"v1`""
-    }
-    catch {
-        Write-Warning "Version create without lifecycle stage failed. Retrying with '--lifecycle-stage testing'."
-        Invoke-AzCli "az apic api version create -g `"$ResourceGroup`" -n `"$ServiceName`" --api-id `"$apiId`" --version-id `"$versionId`" --title `"v1`" --lifecycle-stage testing"
-    }
+    Invoke-AzCli "az apic api version create -g `"$ResourceGroup`" -n `"$ServiceName`" --api-id `"$apiId`" --version-id `"$versionId`" --title `"$versionId`" --lifecycle-stage `"$VersionLifecycleStage`""
     Invoke-AzCli "az apic api definition create -g `"$ResourceGroup`" -n `"$ServiceName`" --api-id `"$apiId`" --version-id `"$versionId`" --definition-id `"$definitionId`" --title `"OpenAPI`""
     $cleanupNeeded = $true
 
