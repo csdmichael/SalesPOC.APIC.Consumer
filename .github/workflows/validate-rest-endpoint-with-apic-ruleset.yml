@@ -1,0 +1,49 @@
+name: Validate REST Endpoint with API Center Ruleset
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: Base API URL to test
+        required: true
+        type: string
+        default: https://apim-poc-my.azure-api.net/salesapi
+      analyzer_config_name:
+        description: Deployed API Center analyzer config name
+        required: false
+        type: string
+        default: spectral-openapi
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/validate-rest-endpoint-with-apic-ruleset.yml'
+      - 'scripts/validate-rest-endpoint-with-apic-ruleset.ps1'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Validate endpoint against deployed API Center ruleset
+        shell: pwsh
+        run: |
+          ./scripts/validate-rest-endpoint-with-apic-ruleset.ps1 `
+            -SubscriptionId "${{ secrets.AZURE_SUBSCRIPTION_ID }}" `
+            -ResourceGroup "${{ secrets.AZURE_RESOURCE_GROUP }}" `
+            -ServiceName "${{ secrets.API_CENTER_SERVICE_NAME }}" `
+            -ApiBaseUrl "${{ inputs.api_url || 'https://apim-poc-my.azure-api.net/salesapi' }}" `
+            -AnalyzerConfigName "${{ inputs.analyzer_config_name || 'spectral-openapi' }}"
